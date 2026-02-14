@@ -1,0 +1,69 @@
+{
+  "project_info": {
+    "project_number": "300976456961",
+    "firebase_url": "https://trimer-4081b-default-rtdb.firebaseio.com",
+    "project_id": "trimer-4081b",
+    "storage_bucket": "trimer-4081b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:300976456961:android:28385862ab1b707b924700",
+        "android_client_info": {
+          "package_name": "com.aite.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "300976456961-4e0vfkgedsi2icftk614i7h8ie4k3gbi.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBLHaoljdIxbhNca-PLIHDSTOaT4rGmuek"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "300976456961-4e0vfkgedsi2icftk614i7h8ie4k3gbi.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:300976456961:android:ec39768ca37257c6924700",
+        "android_client_info": {
+          "package_name": "com.chaite.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "300976456961-4e0vfkgedsi2icftk614i7h8ie4k3gbi.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBLHaoljdIxbhNca-PLIHDSTOaT4rGmuek"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "300976456961-4e0vfkgedsi2icftk614i7h8ie4k3gbi.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
