@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#F0F0F0">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="10dp"
+        android:background="#FFFFFF"
+        android:elevation="4dp">
+        
+        <EditText
+            android:id="@+id/etMyName"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:hint="أدخل اسمك هنا" />
+            
+        <Button
+            android:id="@+id/btnGoOnline"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="اتصل بالشبكة" />
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="8dp"
+        android:text="المستخدمون القريبون (اضغط للاتصال)"
+        android:textStyle="bold"
+        android:background="#DDDDDD"/>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvNeighbors"
+        android:layout_width="match_parent"
+        android:layout_height="120dp"
+        android:background="#FFFFFF" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="8dp"
+        android:text="سجل المحادثة"
+        android:textStyle="bold"
+        android:background="#DDDDDD"/>
+
+    <TextView
+        android:id="@+id/tvChatLog"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:padding="10dp"
+        android:scrollbars="vertical"
+        android:text="الرسائل ستظهر هنا..."
+        android:background="#EFEFEF"/>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="5dp"
+        android:background="#FFFFFF">
+        
+        <EditText
+            android:id="@+id/etMessage"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:hint="اكتب رسالة..." />
+            
+        <Button
+            android:id="@+id/btnSend"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="إرسال" />
+    </LinearLayout>
+
+</LinearLayout>
