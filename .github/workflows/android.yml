@@ -1,13 +1,13 @@
-name: Build Wnet APK
+name: Build Android APK
 
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
     - uses: actions/checkout@v4
 
@@ -17,17 +17,19 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    # هنا الحل: حددنا نسخة Gradle (8.5) بشكل صريح لتجاهل غياب الـ Wrapper
     - name: Setup Gradle
-      uses: gradle/gradle-build-action@v3
+      uses: gradle/actions/setup-gradle@v3
       with:
         gradle-version: 8.5
 
+    # قمنا بتغيير assembleRelease إلى assembleDebug
+    # هذا يجعله يولد ملف APK موقّع تلقائياً وصالح للتثبيت الفوري
     - name: Build with Gradle
-      run: gradle assembleDebug --stacktrace
+      run: gradle assembleDebug
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: Wnet-APK
+        name: Aite-Debug
+        # تأكد من تغيير المسار ليقرأ من مجلد debug
         path: app/build/outputs/apk/debug/app-debug.apk
