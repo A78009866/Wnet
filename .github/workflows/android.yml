@@ -17,11 +17,14 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    # هذا الـ Action سيقوم بتثبيت Gradle الصحيح وبناء التطبيق
-    - name: Setup Gradle and Build
-      uses: gradle/gradle-build-action@v2
+    # هنا الحل: حددنا نسخة Gradle (8.5) بشكل صريح لتجاهل غياب الـ Wrapper
+    - name: Setup Gradle
+      uses: gradle/gradle-build-action@v3
       with:
-        arguments: assembleDebug
+        gradle-version: 8.5
+
+    - name: Build with Gradle
+      run: gradle assembleDebug --stacktrace
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
