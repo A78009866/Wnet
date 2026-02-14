@@ -18,13 +18,9 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
-    - name: Grant execute permission for gradle
-      run: chmod +x gradlew || true
-
-    # هذه الخطوة ستقوم ببناء التطبيق باستخدام نسخة مستقرة
+    # نستخدم gradle المثبت في النظام مباشرة بدلاً من ./gradlew
     - name: Build with Gradle
-      run: ./gradlew assembleDebug --stacktrace
-      continue-on-error: false
+      run: gradle assembleDebug --stacktrace
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
