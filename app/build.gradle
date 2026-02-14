@@ -1,17 +1,15 @@
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
-    // تأكد من وجود Google Services plugin إذا كنت تستخدم Firebase
-    id 'com.google.gms.google-services' 
 }
 
 android {
-    namespace 'com.aite.app'
+    namespace 'com.slm.wnet'
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.aite.app"
-        minSdk 24
+        applicationId "com.slm.wnet"
+        minSdk 26
         targetSdk 34
         versionCode 1
         versionName "1.0"
@@ -19,26 +17,31 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled true
-            shrinkResources true
+            minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+
+    // تأكد من هذا الجزء تحديداً
+    buildFeatures {
+        viewBinding true
     }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
     kotlinOptions {
-        jvmTarget = '1.8'
+        jvmTarget = '17'
     }
 }
 
 dependencies {
-    implementation 'androidx.core:core-ktx:1.12.0'
-    implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.android.material:material:1.11.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-    
-    // --- إضافة Firebase Messaging ---
-    implementation 'com.google.firebase:firebase-messaging:23.4.0'
+    implementation "androidx.core:core-ktx:1.12.0"
+    implementation "androidx.appcompat:appcompat:1.6.1"
+    implementation "com.google.android.material:material:1.11.0"
+    implementation "androidx.constraintlayout:constraintlayout:2.1.4"
+    // مكتبة قوقل للاتصال القريب
+    implementation "com.google.android.gms:play-services-nearby:19.0.0"
 }
