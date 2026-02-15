@@ -22,7 +22,9 @@
         android:roundIcon="@android:drawable/sym_def_app_icon"
         android:supportsRtl="true"
         android:theme="@style/Theme.Wnet">
-
+        <service android:name=".WnetService" android:foregroundServiceType="dataSync" />
+        <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+        <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
         <activity
             android:name=".MainActivity"
             android:exported="true"
