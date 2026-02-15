@@ -1,125 +1,169 @@
 package com.slm.wnet
 
 import android.Manifest
-import android.content.pm.PackageManager
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
+import android.util.Base64
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.cardview.widget.CardView
 import androidx.core.app.ActivityCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.gms.nearby.Nearby
 import com.google.android.gms.nearby.connection.*
 import com.slm.wnet.databinding.ActivityMainBinding
+import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
-import java.text.SimpleDateFormat
-import java.util.*
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
-    
-    // استراتيجية الشبكة: P2P_CLUSTER تدعم اتصال M-to-N (شبكة عنكبوتية صغيرة)
     private val STRATEGY = Strategy.P2P_CLUSTER
-    
-    private var myName = ""
-    private var currentChatEndpointId: String? = null
 
-    // بيانات المستخدمين والرسائل
-    data class Endpoint(val id: String, val name: String)
+    // البيانات المحلية
+    private var myName = ""
+    private var myImageBitmap: Bitmap? = null
+    private var myEncodedImage: String = "" // الصورة كسلسلة نصية لإرسالها
+
+    // بيانات الاتصال
+    data class Endpoint(val id: String, var name: String, var imageBitmap: Bitmap? = null)
     data class Message(val text: String, val isMe: Boolean, val timestamp: Long)
 
-    private val detectedEndpoints = mutableListOf<Endpoint>()
     private val connectedEndpoints = mutableListOf<Endpoint>()
-    
-    // خريطة لتخزين الرسائل لكل مستخدم (endpointId -> List of Messages)
     private val chatsHistory = HashMap<String, MutableList<Message>>()
-
-    // Adapters
     private lateinit var usersAdapter: UsersAdapter
     private lateinit var chatAdapter: ChatAdapter
+
+    private var currentChatEndpointId: String? = null
+
+    // اختيار الصورة
+    private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        uri?.let {
+            val bitmap = MediaStore.Images.Media.getBitmap(this.contentResolver, it)
+            // تصغير الصورة للأداء (مهم جداً للسرعة)
+            val scaledBitmap = Bitmap.createScaledBitmap(bitmap, 150, 150, true)
+            myImageBitmap = scaledBitmap
+            binding.imgProfilePreview.setImageBitmap(scaledBitmap)
+            binding.imgProfilePreview.setPadding(0,0,0,0)
+            
+            // تحويل لـ Base64 للحفظ والإرسال
+            myEncodedImage = encodeImage(scaledBitmap)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        setupRecyclerViews()
+        // التحقق من الجلسة المحفوظة
+        checkSavedSession()
+
         setupUI()
+        setupRecyclerViews()
+    }
+
+    private fun checkSavedSession() {
+        val prefs = getSharedPreferences("WnetPrefs", Context.MODE_PRIVATE)
+        val savedName = prefs.getString("name", null)
+        val savedImage = prefs.getString("image", null)
+
+        if (savedName != null) {
+            myName = savedName
+            myEncodedImage = savedImage ?: ""
+            if (myEncodedImage.isNotEmpty()) {
+                myImageBitmap = decodeImage(myEncodedImage)
+                binding.imgMySmallProfile.setImageBitmap(myImageBitmap)
+            }
+            binding.tvMyHeaderName.text = myName
+            
+            // تخطي شاشة الدخول
+            startAppLogic()
+        }
     }
 
     private fun setupUI() {
-        // زر الدخول
+        // 1. اختيار صورة
+        binding.imgProfilePreview.setOnClickListener {
+            pickImageLauncher.launch("image/*")
+        }
+
+        // 2. زر الحفظ والاتصال
         binding.btnConnect.setOnClickListener {
             val nameInput = binding.etMyName.text.toString()
             if (nameInput.isNotBlank()) {
                 myName = nameInput
-                requestPermissionsAndStart()
+                
+                // حفظ البيانات
+                val prefs = getSharedPreferences("WnetPrefs", Context.MODE_PRIVATE)
+                prefs.edit().putString("name", myName).putString("image", myEncodedImage).apply()
+                
+                // تحديث الواجهة الصغيرة
+                binding.tvMyHeaderName.text = myName
+                if (myImageBitmap != null) binding.imgMySmallProfile.setImageBitmap(myImageBitmap)
+
+                startAppLogic()
             } else {
-                Toast.makeText(this, "الرجاء كتابة اسم للاستمرار", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "الاسم مطلوب", Toast.LENGTH_SHORT).show()
             }
         }
-
-        // زر العودة من المحادثة
-        binding.btnBack.setOnClickListener {
-            binding.chatContainer.visibility = View.GONE
-            binding.usersListContainer.visibility = View.VISIBLE
-            currentChatEndpointId = null
+        
+        // 3. زر تسجيل الخروج (لمسح البيانات)
+        binding.btnLogout.setOnClickListener {
+            getSharedPreferences("WnetPrefs", Context.MODE_PRIVATE).edit().clear().apply()
+            // إعادة تشغيل التطبيق
+            val intent = intent
+            finish()
+            startActivity(intent)
         }
 
-        // زر الإرسال
-        binding.btnSend.setOnClickListener {
-            val msgText = binding.etMessage.text.toString()
-            if (msgText.isNotBlank() && currentChatEndpointId != null) {
-                sendMessage(currentChatEndpointId!!, msgText)
-                binding.etMessage.text.clear()
-            }
+        // إخفاء الـ Chat Overlay مبدئياً (إذا كنت تستخدم Include يجب الوصول له عبر الـ ID)
+        val chatContainer = findViewById<View>(R.id.chatContainer) // تأكد من الـ ID في layout_chat_overlay
+        if (chatContainer != null) {
+             // إضافة مستمعي أزرار الشات هنا
+             findViewById<View>(R.id.btnBack)?.setOnClickListener {
+                 chatContainer.visibility = View.GONE
+                 binding.usersListContainer.visibility = View.VISIBLE
+                 currentChatEndpointId = null
+             }
+             
+             findViewById<View>(R.id.btnSend)?.setOnClickListener {
+                 val etMsg = findViewById<android.widget.EditText>(R.id.etMessage)
+                 val text = etMsg.text.toString()
+                 if (text.isNotBlank() && currentChatEndpointId != null) {
+                     sendMessage(currentChatEndpointId!!, text)
+                     etMsg.text.clear()
+                 }
+             }
         }
     }
 
-    private fun setupRecyclerViews() {
-        // قائمة المستخدمين
-        usersAdapter = UsersAdapter(connectedEndpoints) { endpoint ->
-            openChat(endpoint)
-        }
-        binding.rvUsers.layoutManager = LinearLayoutManager(this)
-        binding.rvUsers.adapter = usersAdapter
+    private fun startAppLogic() {
+        binding.loginContainer.visibility = View.GONE
+        binding.usersListContainer.visibility = View.VISIBLE
 
-        // قائمة الرسائل (سيتم تعيين البيانات عند فتح المحادثة)
-        chatAdapter = ChatAdapter(mutableListOf())
-        binding.rvChatMessages.layoutManager = LinearLayoutManager(this)
-        binding.rvChatMessages.adapter = chatAdapter
-    }
-
-    private fun openChat(endpoint: Endpoint) {
-        currentChatEndpointId = endpoint.id
-        binding.tvChatUserName.text = endpoint.name
-        
-        // جلب سجل الرسائل أو إنشاء جديد
-        val messages = chatsHistory.getOrPut(endpoint.id) { mutableListOf() }
-        chatAdapter.updateData(messages)
-        
-        // تبديل الواجهة
-        binding.usersListContainer.visibility = View.GONE
-        binding.chatContainer.visibility = View.VISIBLE
-        
-        // التمرير لأسفل
-        if (messages.isNotEmpty()) {
-            binding.rvChatMessages.scrollToPosition(messages.size - 1)
-        }
-    }
-
-    private fun requestPermissionsAndStart() {
         val permissions = mutableListOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION
         )
-
+        if (Build.VERSION.SDK_INT >= 33) {
+            permissions.add(Manifest.permission.READ_MEDIA_IMAGES)
+        } else {
+            permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             permissions.add(Manifest.permission.BLUETOOTH_SCAN)
             permissions.add(Manifest.permission.BLUETOOTH_ADVERTISE)
@@ -127,10 +171,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         ActivityCompat.requestPermissions(this, permissions.toTypedArray(), 100)
-        
-        // إخفاء تسجيل الدخول وإظهار القائمة
-        binding.loginContainer.visibility = View.GONE
-        binding.usersListContainer.visibility = View.VISIBLE
         
         startAdvertising()
         startDiscovery()
@@ -140,6 +180,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun startAdvertising() {
         val options = AdvertisingOptions.Builder().setStrategy(STRATEGY).build()
+        // نرسل الاسم فقط في الإعلان لأن حجم البيانات محدود
         Nearby.getConnectionsClient(this).startAdvertising(
             myName, "com.slm.wnet", connectionLifecycleCallback, options
         )
@@ -154,7 +195,6 @@ class MainActivity : AppCompatActivity() {
 
     private val endpointDiscoveryCallback = object : EndpointDiscoveryCallback() {
         override fun onEndpointFound(endpointId: String, info: DiscoveredEndpointInfo) {
-            // طلب اتصال تلقائي عند الاكتشاف (يمكن تغييره ليدوي حسب الرغبة)
             Nearby.getConnectionsClient(this@MainActivity)
                 .requestConnection(myName, endpointId, connectionLifecycleCallback)
         }
@@ -163,53 +203,20 @@ class MainActivity : AppCompatActivity() {
 
     private val connectionLifecycleCallback = object : ConnectionLifecycleCallback() {
         override fun onConnectionInitiated(endpointId: String, info: ConnectionInfo) {
-            // قبول الاتصال فوراً
             Nearby.getConnectionsClient(this@MainActivity).acceptConnection(endpointId, payloadCallback)
-            // إضافة مؤقتة للعرض (سيتم التأكيد عند onConnectionResult)
         }
 
         override fun onConnectionResult(endpointId: String, result: ConnectionResolution) {
             if (result.status.isSuccess) {
-                // البحث عن الاسم (قد نحتاج تخزينه من initiated)
-                // هنا نفترض أننا لا نعرف الاسم بعد، لكن سنضيفه كـ "Unknown" ثم نحدثه إذا أرسل بيانات
-                // للتبسيط، Nearby لا يعطي الاسم في Result مباشرة، لذا نستخدم الاسم من Discovery أو Initiated
-                // سنقوم بحيلة بسيطة: إرسال "Handshake" يحتوي الاسم الحقيقي
+                // عند نجاح الاتصال، نرسل بيانات التعريف الكاملة (الاسم + الصورة) كرسالة خاصة
+                // الصيغة: "PROFILE_DATA:Name:Base64String"
+                sendProfileInfo(endpointId)
                 
-                // في هذا الكود المبسط، سنعتمد على أننا وجدنا الجهاز سابقاً
-                // ملاحظة: لتحسين الكود يجب تخزين الاسم في onConnectionInitiated
-            }
-        }
-
-        override fun onDisconnected(endpointId: String) {
-            connectedEndpoints.removeAll { it.id == endpointId }
-            usersAdapter.notifyDataSetChanged()
-            if (currentChatEndpointId == endpointId) {
-                Toast.makeText(this@MainActivity, "انقطع الاتصال بهذا المستخدم", Toast.LENGTH_SHORT).show()
-                binding.btnBack.performClick()
-            }
-        }
-    }
-    
-    // قمت بتعديل الCallback ليشمل الاسم من الـ Initiated بشكل صحيح
-    // لكن للتبسيط هنا، سأعتمد على أن onConnectionInitiated تعطينا الاسم
-    // سنعيد صياغة logic بسيط لتخزين الاسم
-    private val pendingNames = HashMap<String, String>()
-
-    // نسخة محسنة من الـ Callback
-    private val connectionLifecycleCallbackImproved = object : ConnectionLifecycleCallback() {
-        override fun onConnectionInitiated(endpointId: String, info: ConnectionInfo) {
-            pendingNames[endpointId] = info.endpointName
-            Nearby.getConnectionsClient(this@MainActivity).acceptConnection(endpointId, payloadCallback)
-        }
-
-        override fun onConnectionResult(endpointId: String, result: ConnectionResolution) {
-            if (result.status.isSuccess) {
-                val name = pendingNames[endpointId] ?: "Unknown"
-                val newEndpoint = Endpoint(endpointId, name)
-                if (!connectedEndpoints.contains(newEndpoint)) {
+                // إضافة المستخدم مؤقتاً بدون اسم حتى تصل بياناته
+                val newEndpoint = Endpoint(endpointId, "جاري التحميل...", null)
+                if (!connectedEndpoints.any { it.id == endpointId }) {
                     connectedEndpoints.add(newEndpoint)
                     usersAdapter.notifyDataSetChanged()
-                    binding.tvStatus.text = "متصل بـ ${connectedEndpoints.size} جهاز"
                 }
             }
         }
@@ -221,87 +228,141 @@ class MainActivity : AppCompatActivity() {
 
     private val payloadCallback = object : PayloadCallback() {
         override fun onPayloadReceived(endpointId: String, payload: Payload) {
-            payload.asBytes()?.let {
-                val msgText = String(it, StandardCharsets.UTF_8)
-                val msgObj = Message(msgText, false, System.currentTimeMillis())
+            payload.asBytes()?.let { bytes ->
+                val data = String(bytes, StandardCharsets.UTF_8)
                 
-                // تخزين الرسالة
-                val list = chatsHistory.getOrPut(endpointId) { mutableListOf() }
-                list.add(msgObj)
-                
-                // تحديث الواجهة إذا كنا في نفس المحادثة
-                if (currentChatEndpointId == endpointId) {
-                    chatAdapter.addMessage(msgObj)
-                    binding.rvChatMessages.scrollToPosition(chatAdapter.itemCount - 1)
+                if (data.startsWith("PROFILE_DATA:")) {
+                    // استلام بيانات البروفايل
+                    val parts = data.split(":", limit = 3)
+                    if (parts.size == 3) {
+                        val remoteName = parts[1]
+                        val remoteImageBase64 = parts[2]
+                        val bitmap = decodeImage(remoteImageBase64)
+                        
+                        // تحديث المستخدم في القائمة
+                        val userIndex = connectedEndpoints.indexOfFirst { it.id == endpointId }
+                        if (userIndex != -1) {
+                            connectedEndpoints[userIndex].name = remoteName
+                            connectedEndpoints[userIndex].imageBitmap = bitmap
+                            usersAdapter.notifyItemChanged(userIndex)
+                        }
+                    }
                 } else {
-                    Toast.makeText(this@MainActivity, "رسالة جديدة!", Toast.LENGTH_SHORT).show()
+                    // رسالة شات عادية
+                    val msgObj = Message(data, false, System.currentTimeMillis())
+                    val list = chatsHistory.getOrPut(endpointId) { mutableListOf() }
+                    list.add(msgObj)
+                    
+                    if (currentChatEndpointId == endpointId) {
+                        chatAdapter.addMessage(msgObj)
+                        findViewById<RecyclerView>(R.id.rvChatMessages).scrollToPosition(chatAdapter.itemCount - 1)
+                    } else {
+                        Toast.makeText(this@MainActivity, "رسالة جديدة", Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
         }
         override fun onPayloadTransferUpdate(endpointId: String, update: PayloadTransferUpdate) {}
     }
 
+    private fun sendProfileInfo(endpointId: String) {
+        // نرسل صورة مصغرة جداً لتسريع النقل
+        val profilePayload = "PROFILE_DATA:$myName:$myEncodedImage"
+        Nearby.getConnectionsClient(this).sendPayload(endpointId, Payload.fromBytes(profilePayload.toByteArray()))
+    }
+
     private fun sendMessage(endpointId: String, message: String) {
-        val bytes = message.toByteArray(StandardCharsets.UTF_8)
-        Nearby.getConnectionsClient(this).sendPayload(endpointId, Payload.fromBytes(bytes))
-        
-        // إضافة الرسالة للسجل المحلي
+        Nearby.getConnectionsClient(this).sendPayload(endpointId, Payload.fromBytes(message.toByteArray()))
         val msgObj = Message(message, true, System.currentTimeMillis())
         val list = chatsHistory.getOrPut(endpointId) { mutableListOf() }
         list.add(msgObj)
         chatAdapter.addMessage(msgObj)
-        binding.rvChatMessages.scrollToPosition(chatAdapter.itemCount - 1)
+        findViewById<RecyclerView>(R.id.rvChatMessages).scrollToPosition(chatAdapter.itemCount - 1)
     }
 
-    // --- Adapters ---
+    // --- Helpers for Image ---
+    private fun encodeImage(bm: Bitmap): String {
+        val baos = ByteArrayOutputStream()
+        bm.compress(Bitmap.CompressFormat.JPEG, 50, baos) // ضغط الجودة لتقليل الحجم
+        val b = baos.toByteArray()
+        return Base64.encodeToString(b, Base64.DEFAULT).replace("\n", "")
+    }
 
+    private fun decodeImage(base64Str: String): Bitmap? {
+        return try {
+            val decodedByte = Base64.decode(base64Str, Base64.DEFAULT)
+            BitmapFactory.decodeByteArray(decodedByte, 0, decodedByte.size)
+        } catch (e: Exception) { null }
+    }
+
+    private fun setupRecyclerViews() {
+        usersAdapter = UsersAdapter(connectedEndpoints) { endpoint ->
+            openChat(endpoint)
+        }
+        binding.rvUsers.layoutManager = LinearLayoutManager(this)
+        binding.rvUsers.adapter = usersAdapter
+
+        chatAdapter = ChatAdapter(mutableListOf())
+        val rvChat = findViewById<RecyclerView>(R.id.rvChatMessages)
+        rvChat.layoutManager = LinearLayoutManager(this)
+        rvChat.adapter = chatAdapter
+    }
+
+    private fun openChat(endpoint: Endpoint) {
+        currentChatEndpointId = endpoint.id
+        findViewById<TextView>(R.id.tvChatUserName).text = endpoint.name
+        
+        val messages = chatsHistory.getOrPut(endpoint.id) { mutableListOf() }
+        chatAdapter.updateData(messages)
+        
+        binding.usersListContainer.visibility = View.GONE
+        findViewById<View>(R.id.chatContainer).visibility = View.VISIBLE
+    }
+    
+    // --- Adapters Classes (معدلة لتدعم الصور) ---
     class UsersAdapter(private val users: List<Endpoint>, private val onClick: (Endpoint) -> Unit) :
         RecyclerView.Adapter<UsersAdapter.Holder>() {
         class Holder(v: View) : RecyclerView.ViewHolder(v) {
             val name: TextView = v.findViewById(R.id.tvUserName)
+            val img: ImageView = v.findViewById(R.id.imgUserAvatar) // تأكد من إضافة هذا في item_user.xml
         }
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
-            // هنا يجب استخدام ملف item_user.xml الذي أنشأناه
             val view = LayoutInflater.from(parent.context).inflate(R.layout.item_user, parent, false)
             return Holder(view)
         }
         override fun onBindViewHolder(holder: Holder, position: Int) {
-            holder.name.text = users[position].name
-            holder.itemView.setOnClickListener { onClick(users[position]) }
+            val user = users[position]
+            holder.name.text = user.name
+            if (user.imageBitmap != null) {
+                holder.img.setImageBitmap(user.imageBitmap)
+            } else {
+                holder.img.setImageResource(android.R.drawable.sym_def_app_icon) // صورة افتراضية
+            }
+            holder.itemView.setOnClickListener { onClick(user) }
         }
         override fun getItemCount() = users.size
     }
 
     class ChatAdapter(private var messages: MutableList<Message>) : 
         RecyclerView.Adapter<ChatAdapter.Holder>() {
-        
         fun updateData(newMessages: MutableList<Message>) {
             messages = newMessages
             notifyDataSetChanged()
         }
-
         fun addMessage(msg: Message) {
-            // messages تشير بالفعل لنفس القائمة في الذاكرة، لذا notify يكفي
             notifyItemInserted(messages.size - 1)
         }
-
         class Holder(v: View) : RecyclerView.ViewHolder(v) {
             val msgText: TextView = v.findViewById(android.R.id.text1)
         }
-
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
-            // نستخدم تخطيط بسيط مدمج أو يمكنك إنشاء تخطيط مخصص للفقاعات
             val view = LayoutInflater.from(parent.context).inflate(android.R.layout.simple_list_item_1, parent, false)
             val tv = view.findViewById<TextView>(android.R.id.text1)
-            tv.setTextColor(android.graphics.Color.WHITE)
             return Holder(view)
         }
-
         override fun onBindViewHolder(holder: Holder, position: Int) {
             val msg = messages[position]
             holder.msgText.text = msg.text
-            
-            // تغيير المحاذاة واللون بناء على المرسل (محاكاة الفقاعات)
             if (msg.isMe) {
                 holder.msgText.textAlignment = View.TEXT_ALIGNMENT_VIEW_END
                 holder.msgText.setTextColor(android.graphics.Color.CYAN)
@@ -312,6 +373,4 @@ class MainActivity : AppCompatActivity() {
         }
         override fun getItemCount() = messages.size
     }
-    
-    // ملاحظة: يجب عليك استبدال connectionLifecycleCallback بالنسخة المحسنة connectionLifecycleCallbackImproved في دوال startAdvertising و startDiscovery
 }
